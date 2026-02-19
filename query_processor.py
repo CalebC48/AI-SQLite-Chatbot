@@ -36,17 +36,18 @@ class QueryProcessor:
         schema = self.db_manager.get_schema()
 
         # Step 2: Convert natural language question to SQL
-        print("Converting question to SQL...", flush=True)
+        print("Converting question to SQL...", end=" ", flush=True)
         sql_query = self.ai_client.convert_to_sql(question, schema)
-        print(f"Generated SQL: {sql_query}", flush=True)
+        print("✓")
 
         # Step 3: Execute SQL query
-        print("Executing SQL query...", flush=True)
+        print("Executing SQL query...", end=" ", flush=True)
         results = self.db_manager.execute_query(sql_query)
-        print("Query results retrieved.", flush=True)
+        print("✓")
 
         # Step 4: Format results into natural language response
-        print("Formatting response...", flush=True)
+        print("Formatting response...", end=" ", flush=True)
         response = self.ai_client.format_response(question, sql_query, results)
+        print("✓")
 
         return response
