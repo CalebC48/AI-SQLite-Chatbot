@@ -92,10 +92,10 @@ class SQLiteManager:
 
     def get_schema(self) -> str:
         """
-        Gets the database schema as a formatted string
+        Gets the database schema as a formatted string with business context
 
         Returns:
-            Schema information including tables and columns
+            Schema information including tables and columns with business context
         """
         if not self.is_open or not self.db:
             return "Database not open"
@@ -107,14 +107,36 @@ class SQLiteManager:
 
             schema_lines = ["Database Schema:\n"]
 
+            business_context = {
+                "invoice": "REVENUE: Invoices sent to customers (money coming in). Use invoice.total_amount for revenue calculations.",
+                "payment": "REVENUE: Actual payments received from customers for invoices. Use payment.amount for actual cash received.",
+                "expense": "COSTS: Expenses paid to vendors/suppliers (money going out). Use expense.amount for cost calculations.",
+                "job": "Jobs/work performed for customers. Links customers to companies.",
+                "company": "Companies in the system (e.g., 'Central Glass DC', 'Recon Pest Control').",
+                "customer": "Customers who receive services.",
+                "employee": "Employees who work for companies.",
+                "payroll": "Employee payroll records (costs).",
+            }
+
             for table_name in tables:
                 schema_lines.append(f"Table: {table_name}")
+                if table_name in business_context:
+                    schema_lines.append(f"  NOTE: {business_context[table_name]}")
                 columns = self._get_table_columns(table_name)
 
                 for col_name, col_type in columns:
                     schema_lines.append(f"  - {col_name} ({col_type})")
 
                 schema_lines.append("")
+
+            schema_lines.append("\nIMPORTANT BUSINESS RULES:")
+            schema_lines.append("- Revenue = sum of payment.amount for a company (actual money received from customers)")
+            schema_lines.append("- Expenses = sum of expense.amount for a company (ALL expenses, not just those linked to specific jobs)")
+            schema_lines.append("- Profit = Revenue - Expenses (calculate separately, then subtract)")
+            schema_lines.append("- For profit calculations: Use separate subqueries for revenue and expenses, then subtract")
+            schema_lines.append("- Example profit query: SELECT (SELECT SUM(p.amount) FROM payment p JOIN invoice i ON p.invoice_id = i.invoice_id JOIN company c ON i.company_id = c.company_id WHERE c.name = 'X') - (SELECT SUM(e.amount) FROM expense e JOIN company c ON e.company_id = c.company_id WHERE c.name = 'X')")
+            schema_lines.append("- Do NOT join expenses through jobs/invoices for profit - use ALL company expenses")
+            schema_lines.append("")
 
             return "\n".join(schema_lines)
 

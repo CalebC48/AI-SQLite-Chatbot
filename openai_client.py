@@ -49,13 +49,14 @@ class OpenAIClient:
         except requests.exceptions.RequestException as e:
             raise RuntimeError(f"OpenAI API request failed: {e}")
 
-    def send_prompt(self, prompt: str, model: str = "gpt-3.5-turbo") -> str:
+    def send_prompt(self, prompt: str, model: str = "gpt-4.1", temperature: float = 0.3) -> str:
         """
         Sends a prompt to OpenAI API and returns the response
 
         Args:
             prompt: The prompt to send
-            model: The model to use (default: gpt-3.5-turbo)
+            model: The model to use (default: gpt-4.1)
+            temperature: Temperature for response randomness
 
         Returns:
             The response text from OpenAI
@@ -65,7 +66,7 @@ class OpenAIClient:
             "messages": [
                 {"role": "user", "content": prompt}
             ],
-            "temperature": 0.7
+            "temperature": temperature
         }
 
         response = self._make_request("/chat/completions", payload)
@@ -77,18 +78,41 @@ class OpenAIClient:
         except (KeyError, IndexError) as e:
             raise RuntimeError(f"Failed to parse OpenAI response: {e}")
 
-    def convert_to_sql(self, question: str, schema: str) -> str:
+    def convert_to_sql(self, question: str, schema: str, use_few_shot: bool = False, examples: list = None) -> str:
         """
-        Converts natural language question to SQL query
+        Converts natural language question to SQL query using either zero-shot or few-shot prompting
 
         Args:
             question: Natural language question about the database
             schema: Schema information about the database
+            use_few_shot: Whether to use few-shot prompting (default: False for zero-shot)
+            examples: List of (question, sql_query) tuples for few-shot examples
 
         Returns:
             SQL query string
         """
-        prompt = f"""You are a SQL expert. Given the following database schema:
+        if use_few_shot and examples:
+            # Few-shot prompting: include example question-SQL pairs
+            examples_text = "\n\n".join([
+                f"Question: {ex_question}\nSQL: {ex_sql}"
+                for ex_question, ex_sql in examples
+            ])
+
+            prompt = f"""You are a SQL expert. Given the following database schema:
+
+{schema}
+
+Here are some example questions and their corresponding SQL queries for this database:
+
+{examples_text}
+
+Now convert the following natural language question into a SQLite SQL query:
+{question}
+
+Return ONLY the SQL query, nothing else. Do not include explanations or markdown formatting."""
+        else:
+            # Zero-shot prompting: no examples, just schema and question
+            prompt = f"""You are a SQL expert. Given the following database schema:
 
 {schema}
 
@@ -130,9 +154,11 @@ Return ONLY the SQL query, nothing else. Do not include explanations or markdown
 The following SQL query was executed:
 {sql_query}
 
-The results are:
+The EXACT results from the database are:
 {results}
 
-Provide a clear, natural language answer to the user's question based on these results."""
+IMPORTANT: You must ONLY use the numbers and data shown in the results above. Do NOT make up, estimate, or calculate any numbers that are not explicitly shown in the results. If the results show specific values, use those exact values. If you need to calculate something, show the calculation using only the numbers from the results.
+
+Provide a clear, natural language answer to the user's question based EXCLUSIVELY on these results."""
 
         return self.send_prompt(prompt)

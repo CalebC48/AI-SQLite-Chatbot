@@ -5,18 +5,22 @@ AI-SQLite-Chatbot - Interactive natural language query tool for SQLite databases
 
 import argparse
 import sys
+import os
 from openai_client import OpenAIClient
 from sqlite_manager import SQLiteManager
 from query_processor import QueryProcessor
+from few_shot_examples import FEW_SHOT_EXAMPLES
 
 DEFAULT_DB_PATH = "centralglass_recon.sqlite"
 
-def print_welcome(db_path: str):
+def print_welcome(db_path: str, strategy_info: str = ""):
     """Print welcome message"""
     print("\n" + "="*60)
     print("  AI-SQLite-Chatbot - Interactive Database Query Tool")
     print("="*60)
     print(f"\nConnected to database: {db_path}")
+    if strategy_info:
+        print(f"{strategy_info}")
     print("\nYou can now ask questions about your database in natural language.")
     print("Type 'exit', 'quit', or 'q' to end the session.")
     print("Type 'help' for more information.\n")
@@ -56,18 +60,35 @@ Examples:
         help=f"Path to SQLite database file (default: {DEFAULT_DB_PATH})"
     )
 
+    parser.add_argument(
+        "--no-debug",
+        action="store_true",
+        help="Hide SQL query and raw results debugging information"
+    )
+
     args = parser.parse_args()
 
     try:
         db_manager = SQLiteManager()
         ai_client = OpenAIClient()
-        processor = QueryProcessor(db_manager, ai_client)
+
+        # Determine if we should use few-shot prompting (only for default database)
+        is_default_db = os.path.basename(args.database) == DEFAULT_DB_PATH or args.database == DEFAULT_DB_PATH
+        use_few_shot = is_default_db
+        examples = FEW_SHOT_EXAMPLES if use_few_shot else None
+
+        processor = QueryProcessor(db_manager, ai_client, use_few_shot=use_few_shot, examples=examples)
 
         if not db_manager.open_database(args.database):
             print(f"Error: Failed to open database at {args.database}", file=sys.stderr)
             return 1
 
-        print_welcome(args.database)
+        # Show which prompting strategy is being used
+        strategy_info = "Using few-shot prompting" if use_few_shot else "Using zero-shot prompting"
+        print_welcome(args.database, strategy_info)
+
+        # Track debug mode (can be toggled)
+        show_debug = not args.no_debug
 
         while True:
             try:
@@ -84,9 +105,14 @@ Examples:
                     print_help()
                     continue
 
+                if question.lower() == 'debug':
+                    show_debug = not show_debug
+                    print(f"\nDebug mode: {'ON' if show_debug else 'OFF'}\n")
+                    continue
+
                 print()
                 try:
-                    response = processor.process_query(question)
+                    response = processor.process_query(question, show_debug=show_debug)
                     print(f"\nAssistant: {response}\n")
                     print("-"*60 + "\n")
                 except Exception as e:
